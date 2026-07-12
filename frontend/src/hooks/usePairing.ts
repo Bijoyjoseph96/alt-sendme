@@ -3,9 +3,7 @@ import { listen } from '@/lib/platform-api'
 import { IS_DESKTOP } from '@/lib/platform'
 import {
 	forgetPairedDevice,
-	getDeviceInfo,
 	joinPairing,
-	listPairedDevices,
 	renamePairedDevice,
 	setDeviceDisplayName,
 	startPairingHost,
@@ -13,14 +11,15 @@ import {
 	type DeviceInfo,
 	type PairedDevice,
 } from '@/lib/pairing-api'
-import { useNodeCapability } from './useNodeCapability'
+import {
+	selectIsNodeReady,
+	usePairingStore,
+} from '@/store/pairing-store'
 
 // Must match engine/protocol pairing::PAIRING_VOTE_TIMEOUT_SECS
 const PAIRING_HOST_TTL_SECS = 120
 
 export function usePairing() {
-	const [devices, setDevices] = useState<PairedDevice[]>([])
-	const [thisDevice, setThisDevice] = useState<DeviceInfo | null>(null)
 	const [pairingTicket, setPairingTicket] = useState<string | null>(null)
 	const [hostExpiresIn, setHostExpiresIn] = useState<number | null>(null)
 	const [isJoining, setIsJoining] = useState(false)
@@ -29,40 +28,17 @@ export function usePairing() {
 	// pairing window, so the UI can close the QR dialog and confirm success.
 	const [hostPairedCount, setHostPairedCount] = useState(0)
 	const pairingTicketRef = useRef<string | null>(null)
-	const { isNodeReady, nodeStatus } = useNodeCapability()
+
+	const devices = usePairingStore((s) => s.pairedDevices)
+	const thisDevice = usePairingStore((s) => s.thisDevice)
+	const nodeStatus = usePairingStore((s) => s.nodeStatus)
+	const isNodeReady = usePairingStore(selectIsNodeReady)
+	const refreshDevices = usePairingStore((s) => s.refreshDevices)
+	const refreshThisDevice = usePairingStore((s) => s.refreshThisDevice)
 
 	useEffect(() => {
 		pairingTicketRef.current = pairingTicket
 	}, [pairingTicket])
-
-	const refreshDevices = useCallback(async () => {
-		if (!IS_DESKTOP || !isNodeReady) {
-			setDevices([])
-			return
-		}
-		try {
-			setDevices(await listPairedDevices())
-		} catch (error) {
-			console.error('Failed to list paired devices:', error)
-		}
-	}, [isNodeReady])
-
-	const refreshThisDevice = useCallback(async () => {
-		if (!IS_DESKTOP || !isNodeReady) {
-			setThisDevice(null)
-			return
-		}
-		try {
-			setThisDevice(await getDeviceInfo())
-		} catch (error) {
-			console.error('Failed to load this device:', error)
-		}
-	}, [isNodeReady])
-
-	useEffect(() => {
-		void refreshDevices()
-		void refreshThisDevice()
-	}, [refreshDevices, refreshThisDevice])
 
 	useEffect(() => {
 		if (!IS_DESKTOP) return
@@ -73,14 +49,11 @@ export function usePairing() {
 
 		const setup = async () => {
 			const pairedUnlisten = await listen('device-paired', () => {
-				// The backend closes the pairing host once a peer completes the
-				// handshake, so the ticket is no longer valid.
 				if (pairingTicketRef.current != null) {
 					setPairingTicket(null)
 					setHostExpiresIn(null)
 					setHostPairedCount((count) => count + 1)
 				}
-				void refreshDevices()
 			})
 			if (disposed) {
 				pairedUnlisten()
@@ -91,6 +64,11 @@ export function usePairing() {
 			const expiredUnlisten = await listen('pairing-host-expired', () => {
 				setPairingTicket(null)
 				setHostExpiresIn(null)
+				toastManager.add({
+					title: t('common:settings.devices.pairingHostExpired'),
+					description: t('common:settings.devices.pairingHostExpiredDesc'),
+					type: 'info',
+				})
 			})
 			if (disposed) {
 				expiredUnlisten()
@@ -106,7 +84,7 @@ export function usePairing() {
 			unlistenPaired?.()
 			unlistenExpired?.()
 		}
-	}, [refreshDevices])
+	}, [])
 
 	useEffect(() => {
 		if (hostExpiresIn == null || hostExpiresIn <= 0) return
@@ -168,10 +146,10 @@ export function usePairing() {
 	const renameThisDevice = useCallback(
 		async (displayName: string) => {
 			const updated = await setDeviceDisplayName(displayName)
-			if (updated) setThisDevice(updated)
+			if (updated) await refreshThisDevice()
 			return updated
 		},
-		[]
+		[refreshThisDevice]
 	)
 
 	const renameDevice = useCallback(
@@ -203,3 +181,6 @@ export function usePairing() {
 		renameDevice,
 	}
 }
+
+// Re-export types used by settings UI
+export type { DeviceInfo, PairedDevice }

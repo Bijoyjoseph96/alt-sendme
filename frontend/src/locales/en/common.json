@@ -82,10 +82,17 @@
 			"send": "Send",
 			"sending": "Sending…",
 			"sent": "Sent",
+			"failed": "Failed",
 			"inviteSent": "Invite sent",
 			"inviteSentTo": "Invite sent to {{name}}",
 			"inviteSentDesc": "They can accept it to start downloading.",
 			"inviteFailed": "Could not reach device",
+			"inviteFailedTo": "Could not reach {{name}}",
+			"inviteFailedRecovery": "Copy the manual ticket below, check relay settings on both devices, or re-pair if you recently changed network setup.",
+			"pairedSendUnavailableTitle": "Paired send unavailable",
+			"pairedSendUnavailableDesc": "The pairing service is not ready on this device. Manual ticket sharing still works.",
+			"openDevicesSettings": "Open Devices settings",
+			"openRelaySettings": "Relay settings",
 			"deviceOffline": "Device is offline — use the manual ticket instead.",
 			"deviceUnreachable": "This device is still paired. Try again when it is online, or use the manual ticket. Both devices may need compatible relay settings.",
 			"unknownPeer": "Unknown device"
@@ -231,7 +238,19 @@
 			"desktopOnly": "Device pairing is available on the desktop app only.",
 			"nodeUnavailableTitle": "Device pairing is unavailable",
 			"nodeUnavailableHint": "Manual tickets and file sharing still work normally.",
+			"relayHintDefault": "Pairing works across the internet using public relays.",
+			"relayHintCustom": "For reliable pairing and paired send, both devices should use the same relay (or compatible fallback).",
+			"relayHintDisabled": "Relays are off — pairing and paired send usually work only on the same local network.",
 			"relayChangePairedHint": "Paired devices stay listed. Paired send may not work until both devices can reach each other on the new network setup.",
+			"relayChangePairedHintDisabled": "Paired devices stay listed, but remote paired send may stop working. Same-network pairing may still work.",
+			"relayChangePairedHintCustom": "Paired devices stay listed. Other devices should use the same relay (or public fallback if enabled) for paired send to keep working.",
+			"relayChangeQrInvalidated": "Any open pairing code is closed when relay settings change — generate a new code if needed.",
+			"pairingHostExpired": "Pairing window closed",
+			"pairingHostExpiredDesc": "Generate a new pairing code to add another device.",
+			"lastSeenRecent": "Seen recently",
+			"lastSeenMinutes": "Last seen {{count}}m ago",
+			"lastSeenHours": "Last seen {{count}}h ago",
+			"lastSeenDays": "Last seen {{count}}d ago",
 			"thisDevice": "This device",
 			"thisDeviceHint": "Name shown to devices you pair with. OS and device type are detected automatically.",
 			"deviceName": "Device name",
@@ -355,7 +374,9 @@
 			"directNote": "Once a direct connection is established, files transfer directly between devices, and the relay is no longer used.",
 			"lanNote": "On the same local network, relays are skipped entirely.",
 			"encryptedNote": "Transfers are always end-to-end encrypted, so relays never see your files.",
-			"disabledNote": "Relays are off. Direct connections only, so transfers may fail across strict firewalls or NATs."
+			"disabledNote": "Relays are off. Direct connections only, so transfers may fail across strict firewalls or NATs.",
+			"pairedDevicesNote": "Paired devices use this relay to receive send invites.",
+			"pairedDevicesFallbackNote": "Using public relay fallback — paired devices on a custom-only relay may not receive invites until they use a compatible relay too."
 		}
 	}
 }

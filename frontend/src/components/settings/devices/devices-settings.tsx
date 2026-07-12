@@ -24,6 +24,8 @@ import {
 import { IS_DESKTOP } from '@/lib/platform'
 import { deviceSubtitle } from '@/lib/pairing-api'
 import { deviceTypeIcon } from '@/lib/device-icon'
+import { formatLastSeenAgo } from '@/lib/pairing-relay-hints'
+import { RelayPairingCallout } from '@/components/pairing/RelayPairingCallout'
 
 function PairHostModal({
 	open,
@@ -80,6 +82,7 @@ function PairHostModal({
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<div className="space-y-3 px-6">
+					<RelayPairingCallout />
 					<Label>{t('common:settings.devices.pairingCode')}</Label>
 					<Textarea
 						readOnly
@@ -165,7 +168,8 @@ function PairJoinModal({
 						{t('common:settings.devices.joinHint')}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
-				<div className="px-6 pb-2">
+				<div className="px-6 pb-2 space-y-3">
+					<RelayPairingCallout />
 					<Input
 						value={code}
 						onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
@@ -432,6 +436,7 @@ export function DevicesSettings() {
 							<FrameDescription>
 								{t('common:settings.devices.description')}
 							</FrameDescription>
+							<RelayPairingCallout className="mt-2" />
 						</div>
 						<div className="flex flex-wrap gap-2 shrink-0">
 							<Button
@@ -494,6 +499,7 @@ export function DevicesSettings() {
 						<ul className="divide-y border-t">
 							{devices.map((device) => {
 								const Icon = deviceTypeIcon(device.device_type)
+								const lastSeen = formatLastSeenAgo(device.last_seen_at, t)
 								return (
 									<li
 										key={device.endpoint_id}
@@ -509,6 +515,7 @@ export function DevicesSettings() {
 												</p>
 												<p className="text-xs text-muted-foreground truncate">
 													{deviceSubtitle(device)}
+													{lastSeen ? ` · ${lastSeen}` : ''}
 												</p>
 											</div>
 										</div>

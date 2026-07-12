@@ -1,4 +1,5 @@
-import { Check, CheckCircle, Copy, Loader2, Square } from 'lucide-react'
+import { Check, CheckCircle, Copy, Loader2, Square, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n/react-i18next-compat'
 import type {
 	SharingControlsProps,
@@ -15,6 +16,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { useAppSettingStore } from '../../store/app-setting'
 import { deviceSubtitle } from '@/lib/pairing-api'
 import { deviceTypeIcon } from '@/lib/device-icon'
+import { formatLastSeenAgo } from '@/lib/pairing-relay-hints'
+import { IS_DESKTOP } from '@/lib/platform'
 
 export function SharingActiveCard({
 	selectedPaths,
@@ -98,6 +101,13 @@ export function SharingActiveCard({
 		pairedDevices.length > 0 &&
 		onInvitePairedDevice
 
+	const showPairedSendUnavailable =
+		!isTransporting &&
+		ticket &&
+		IS_DESKTOP &&
+		!isNodeReady &&
+		pairedDevices.length > 0
+
 	return (
 		<div className="space-y-4">
 			<div className="p-4 rounded-lg absolute top-0 left-0">
@@ -145,6 +155,21 @@ export function SharingActiveCard({
 				/>
 			)}
 
+			{showPairedSendUnavailable && (
+				<div className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground space-y-1">
+					<p className="font-medium text-foreground">
+						{t('common:sender.pairedDevices.pairedSendUnavailableTitle')}
+					</p>
+					<p>{t('common:sender.pairedDevices.pairedSendUnavailableDesc')}</p>
+					<Link
+						to="/settings/devices"
+						className="inline-block text-foreground underline underline-offset-2"
+					>
+						{t('common:sender.pairedDevices.openDevicesSettings')}
+					</Link>
+				</div>
+			)}
+
 			{showPairedSend && (
 				<div className="space-y-2">
 					<p className="text-sm font-medium">
@@ -154,6 +179,7 @@ export function SharingActiveCard({
 						{pairedDevices.map((device) => {
 							const Icon = deviceTypeIcon(device.device_type)
 							const inviteStatus = pairedInviteStatus[device.endpoint_id]
+							const lastSeen = formatLastSeenAgo(device.last_seen_at, t)
 							return (
 								<li
 									key={device.endpoint_id}
@@ -167,6 +193,7 @@ export function SharingActiveCard({
 											</span>
 											<span className="block truncate text-xs text-muted-foreground">
 												{deviceSubtitle(device)}
+												{lastSeen ? ` · ${lastSeen}` : ''}
 											</span>
 										</div>
 									</div>
@@ -186,6 +213,11 @@ export function SharingActiveCard({
 											<>
 												<Check className="w-3.5 h-3.5 mr-1.5" />
 												{t('common:sender.pairedDevices.sent')}
+											</>
+										) : inviteStatus === 'failed' ? (
+											<>
+												<X className="w-3.5 h-3.5 mr-1.5" />
+												{t('common:sender.pairedDevices.failed')}
 											</>
 										) : (
 											t('common:sender.pairedDevices.send')

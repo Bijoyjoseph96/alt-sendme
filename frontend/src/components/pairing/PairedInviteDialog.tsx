@@ -29,14 +29,7 @@ export function PairedInviteDialog() {
 
 	const accept = async () => {
 		if (!invite) return
-		console.log('[paired-invite] receiver: dialog accept clicked', {
-			sender: invite.sender_name,
-			hasHandler: Boolean(acceptPairedInvite),
-		})
 		if (!acceptPairedInvite) {
-			console.warn(
-				'[paired-invite] receiver: accept handler not registered (Receive tab may be unmounted)'
-			)
 			toastManager.add({
 				title: t('common:errors.receiveFailed'),
 				description: t('common:receiver.openReceiveTabHint'),
@@ -49,9 +42,8 @@ export function PairedInviteDialog() {
 		setInvite(null)
 		try {
 			await acceptPairedInvite(payload)
-			console.log('[paired-invite] receiver: accept handler completed')
 		} catch (error) {
-			console.error('[paired-invite] receiver: accept handler failed', error)
+			console.error('Failed to accept paired invite:', error)
 		}
 	}
 

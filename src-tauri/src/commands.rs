@@ -2,10 +2,10 @@ use crate::features::thumbnail::generate_thumbnail;
 use crate::state::{AppStateMutex, ShareHandle};
 use engine::{
     download, fetch_metadata, get_relay_status as engine_get_relay_status,
-    pairing_dev, pairing_dev_warn, resolve_relay_mode_with_fallback,
-    start_share_items, verify_relays as engine_verify_relays, DeviceInfo, NodeService,
-    PairedDevice, AddrInfoOptions, AppHandle, EventEmitter, FileMetadata, FilePreviewItem,
-    ReceiveOptions, SendOptions,
+    resolve_relay_mode_with_fallback, start_share_items,
+    verify_relays as engine_verify_relays, DeviceInfo, NodeService, PairedDevice,
+    AddrInfoOptions, AppHandle, EventEmitter, FileMetadata, FilePreviewItem, ReceiveOptions,
+    SendOptions,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -41,33 +41,16 @@ struct TauriEventEmitter {
 
 impl EventEmitter for TauriEventEmitter {
     fn emit_event(&self, event_name: &str) -> Result<(), String> {
-        if is_pairing_dev_event(event_name) {
-            pairing_dev!("cmd.event.emit", event = event_name);
-        }
         self.app_handle
             .emit(event_name, ())
             .map_err(|e| e.to_string())
     }
 
     fn emit_event_with_payload(&self, event_name: &str, payload: &str) -> Result<(), String> {
-        if is_pairing_dev_event(event_name) {
-            pairing_dev!(
-                "cmd.event.emit_payload",
-                event = event_name,
-                payload_len = payload.len()
-            );
-        }
         self.app_handle
             .emit(event_name, payload)
             .map_err(|e| e.to_string())
     }
-}
-
-fn is_pairing_dev_event(event_name: &str) -> bool {
-    matches!(
-        event_name,
-        "device-paired" | "pairing-host-expired" | "paired-invite-received"
-    )
 }
 
 /// Get file or directory size
@@ -329,8 +312,6 @@ pub async fn receive_file(
     use iroh_blobs::ticket::BlobTicket;
     use std::str::FromStr;
 
-    let ticket_len = ticket.len();
-    let output_path_log = output_path.clone();
     let output_dir = PathBuf::from(output_path);
     let (relay_mode, fell_back_to_public) = resolve_relay_mode_with_fallback(relay).await?;
     let options = ReceiveOptions {
@@ -379,11 +360,6 @@ pub async fn receive_file(
     {
         let mut app_state = state.lock().await;
         if app_state.current_receive_cancel.is_some() {
-            pairing_dev_warn!(
-                "receive.busy",
-                ticket_len,
-                reason = "concurrent_receive_blocked"
-            );
             return Err(
                 "Already receiving a file. Wait for the current download to finish.".to_string(),
             );
@@ -391,30 +367,7 @@ pub async fn receive_file(
         app_state.current_receive_cancel = Some(cancel_tx);
     }
 
-    pairing_dev!(
-        "receive.start",
-        ticket_len,
-        output_path = %output_path_log,
-        note = "includes_paired_invite_accept_flow"
-    );
-
     let result = download(ticket, options, boxed_handle, cancel_rx).await;
-
-    match &result {
-        Ok(r) => pairing_dev!(
-            "receive.done",
-            ticket_len,
-            message = %r.message
-        ),
-        Err(e) if e.to_string() == "cancelled" => {
-            pairing_dev!("receive.cancelled", ticket_len);
-        }
-        Err(e) => pairing_dev_warn!(
-            "receive.failed",
-            ticket_len,
-            error = %e
-        ),
-    }
 
     // Update state based on outcome.
     {
@@ -453,15 +406,11 @@ pub async fn receive_file(
 /// Partial data is preserved on disk so the transfer can be resumed.
 #[tauri::command]
 pub async fn cancel_receive(state: State<'_, AppStateMutex>) -> Result<(), String> {
-    pairing_dev!("receive.cancel_request");
     let mut app_state = state.lock().await;
     if let Some(tx) = app_state.current_receive_cancel.take() {
-        pairing_dev!("receive.cancel_signaled");
         // Sending () signals the download future to stop. If the receiver is
         // already gone (download finished first) this is a harmless no-op.
         let _ = tx.send(());
-    } else {
-        pairing_dev!("receive.cancel_noop", reason = "no_active_receive");
     }
     Ok(())
 }
@@ -647,15 +596,12 @@ pub async fn verify_relays(relay: RelayConfigArg) -> Result<VerifyRelaysResponse
 
 #[cfg(desktop)]
 pub async fn init_node_service(app_handle: tauri::AppHandle) -> Result<(), String> {
-    pairing_dev!("cmd.init_node.start");
     let data_dir = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?;
-    pairing_dev!("cmd.init_node.data_dir", path = %data_dir.display());
     let (relay_mode, _) = resolve_relay_mode_with_fallback(None).await?;
     let relay_mode: iroh::endpoint::RelayMode = relay_mode.into();
-    pairing_dev!("cmd.init_node.relay", relay_mode = ?relay_mode);
     let emitter = Arc::new(TauriEventEmitter {
         app_handle: app_handle.clone(),
     });
@@ -663,14 +609,12 @@ pub async fn init_node_service(app_handle: tauri::AppHandle) -> Result<(), Strin
     let node = NodeService::start(&data_dir, relay_mode, boxed_handle)
         .await
         .map_err(|e| {
-            pairing_dev_warn!("cmd.init_node.failed", error = %e);
             format!("Failed to start device node: {e}")
         })?;
     let state = app_handle.state::<AppStateMutex>();
     let mut guard = state.lock().await;
     guard.node = Some(Arc::new(node));
     guard.node_init_error = None;
-    pairing_dev!("cmd.init_node.ready");
     Ok(())
 }
 
@@ -699,11 +643,6 @@ fn node_status_from_state(guard: &crate::state::AppState) -> NodeStatusResponse 
 pub async fn get_node_status(state: State<'_, AppStateMutex>) -> Result<NodeStatusResponse, String> {
     let guard = state.lock().await;
     let status = node_status_from_state(&guard);
-    pairing_dev!(
-        "cmd.get_node_status",
-        status = %status.status,
-        reason = ?status.reason
-    );
     Ok(status)
 }
 
@@ -713,17 +652,12 @@ pub async fn reconfigure_node_relay(
     relay: Option<RelayConfigArg>,
     state: State<'_, AppStateMutex>,
 ) -> Result<(), String> {
-    pairing_dev!("cmd.reconfigure_relay.start");
     let (relay_mode, _) = resolve_relay_mode_with_fallback(relay).await?;
     let relay_mode: iroh::endpoint::RelayMode = relay_mode.into();
 
     let node = {
         let guard = state.lock().await;
         if guard.current_share.is_some() || guard.is_share_starting {
-            pairing_dev_warn!(
-                "cmd.reconfigure_relay.blocked",
-                reason = "active_share"
-            );
             return Err(
                 "Stop sharing before changing relay settings for paired devices.".to_string(),
             );
@@ -737,10 +671,8 @@ pub async fn reconfigure_node_relay(
     node.reconfigure_relay(relay_mode)
         .await
         .map_err(|e| {
-            pairing_dev_warn!("cmd.reconfigure_relay.failed", error = %e);
             format!("Failed to update device relay: {e}")
         })?;
-    pairing_dev!("cmd.reconfigure_relay.done");
     Ok(())
 }
 
@@ -758,13 +690,6 @@ pub async fn get_device_info(state: State<'_, AppStateMutex>) -> Result<DeviceIn
                 .unwrap_or_else(|| "Device pairing is not available.".to_string())
         })?;
     let info = node.device_info();
-    pairing_dev!(
-        "cmd.get_device_info",
-        endpoint_id = %info.endpoint_id,
-        display_name = %info.display_name,
-        device_type = %info.device_type,
-        os = %info.os
-    );
     Ok(info)
 }
 
@@ -774,19 +699,13 @@ pub async fn set_device_display_name(
     display_name: String,
     state: State<'_, AppStateMutex>,
 ) -> Result<DeviceInfo, String> {
-    pairing_dev!("cmd.set_device_display_name", display_name = %display_name);
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     let info = node
         .set_device_display_name(&display_name)
         .map_err(|e| {
-            pairing_dev_warn!("cmd.set_device_display_name.failed", error = %e);
             e.to_string()
         })?;
-    pairing_dev!(
-        "cmd.set_device_display_name.done",
-        display_name = %info.display_name
-    );
     Ok(info)
 }
 
@@ -797,24 +716,13 @@ pub async fn rename_paired_device(
     display_name: String,
     state: State<'_, AppStateMutex>,
 ) -> Result<PairedDevice, String> {
-    pairing_dev!(
-        "cmd.rename_paired_device",
-        endpoint_id = %endpoint_id,
-        display_name = %display_name
-    );
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     let device = node
         .rename_paired(&endpoint_id, &display_name)
         .map_err(|e| {
-            pairing_dev_warn!("cmd.rename_paired_device.failed", error = %e);
             e.to_string()
         })?;
-    pairing_dev!(
-        "cmd.rename_paired_device.done",
-        endpoint_id = %device.endpoint_id,
-        display_name = %device.display_name
-    );
     Ok(device)
 }
 
@@ -831,32 +739,24 @@ fn require_node(guard: &crate::state::AppState) -> Result<&NodeService, String> 
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn start_pairing_host(state: State<'_, AppStateMutex>) -> Result<String, String> {
-    pairing_dev!("cmd.start_pairing_host");
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     let ticket = node
         .start_pairing_host()
         .await
         .map_err(|e| {
-            pairing_dev_warn!("cmd.start_pairing_host.failed", error = %e);
             e.to_string()
         })?;
-    pairing_dev!(
-        "cmd.start_pairing_host.done",
-        ticket_len = ticket.len()
-    );
     Ok(ticket)
 }
 
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn stop_pairing_host(state: State<'_, AppStateMutex>) -> Result<(), String> {
-    pairing_dev!("cmd.stop_pairing_host");
     let guard = state.lock().await;
     if let Some(node) = guard.node.as_ref() {
         node.stop_pairing_host().await;
     }
-    pairing_dev!("cmd.stop_pairing_host.done");
     Ok(())
 }
 
@@ -866,16 +766,13 @@ pub async fn join_pairing(
     ticket: String,
     state: State<'_, AppStateMutex>,
 ) -> Result<(), String> {
-    pairing_dev!("cmd.join_pairing", ticket_len = ticket.len());
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     node.join_pairing(&ticket)
         .await
         .map_err(|e| {
-            pairing_dev_warn!("cmd.join_pairing.failed", error = %e);
             e.to_string()
         })?;
-    pairing_dev!("cmd.join_pairing.done");
     Ok(())
 }
 
@@ -884,14 +781,9 @@ pub async fn join_pairing(
 pub async fn list_paired_devices(
     state: State<'_, AppStateMutex>,
 ) -> Result<Vec<PairedDevice>, String> {
-    pairing_dev!("cmd.list_paired_devices");
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     let devices = node.list_paired().map_err(|e| e.to_string())?;
-    pairing_dev!(
-        "cmd.list_paired_devices.done",
-        count = devices.len()
-    );
     Ok(devices)
 }
 
@@ -901,16 +793,13 @@ pub async fn forget_paired_device(
     endpoint_id: String,
     state: State<'_, AppStateMutex>,
 ) -> Result<(), String> {
-    pairing_dev!("cmd.forget_paired_device", endpoint_id = %endpoint_id);
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     node.forget_paired(&endpoint_id)
         .await
         .map_err(|e| {
-            pairing_dev_warn!("cmd.forget_paired_device.failed", error = %e);
             e.to_string()
         })?;
-    pairing_dev!("cmd.forget_paired_device.done", endpoint_id = %endpoint_id);
     Ok(())
 }
 
@@ -928,31 +817,14 @@ pub async fn invite_paired_device(
     total_size: u64,
     state: State<'_, AppStateMutex>,
 ) -> Result<InviteDelivered, String> {
-    pairing_dev!(
-        "cmd.invite_paired_device",
-        remote_endpoint = %endpoint_id,
-        file_count,
-        total_size,
-        ticket_len = blob_ticket.len()
-    );
     let guard = state.lock().await;
     let node = require_node(&guard)?;
     let delivered = node
         .invite_paired_device(&endpoint_id, &blob_ticket, file_count, total_size)
         .await
         .map_err(|e| {
-            pairing_dev_warn!(
-                "cmd.invite_paired_device.failed",
-                remote_endpoint = %endpoint_id,
-                error = %e
-            );
             e.to_string()
         })?;
-    pairing_dev!(
-        "cmd.invite_paired_device.done",
-        remote_endpoint = %endpoint_id,
-        delivered
-    );
     Ok(InviteDelivered { delivered })
 }
 

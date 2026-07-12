@@ -7,6 +7,8 @@ import { useTranslation } from '@/i18n'
 import { buildRelayStatusConfig } from '@/lib/relay-status'
 import { useAppSettingStore } from '@/store/app-setting'
 import { cn } from '@/lib/utils'
+import { IS_DESKTOP } from '@/lib/platform'
+import { selectIsNodeReady, usePairingStore } from '@/store/pairing-store'
 
 type RelayStatusKind = 'public' | 'custom' | 'disabled' | 'unavailable'
 
@@ -23,6 +25,9 @@ export function RelayStatusButton() {
 	const relayUrls = useAppSettingStore((s) => s.relayUrls)
 	const relayAuthToken = useAppSettingStore((s) => s.relayAuthToken)
 	const relayFallback = useAppSettingStore((s) => s.relayFallback)
+	const hasPairedDevices = usePairingStore(
+		(s) => s.pairedDevices.length > 0 && selectIsNodeReady(s)
+	)
 
 	const [status, setStatus] = useState<RelayStatusResponse | null>(null)
 	const [isLoading, setIsLoading] = useState(true)
@@ -195,6 +200,13 @@ export function RelayStatusButton() {
 								{status.url}
 							</p>
 						)}
+						{IS_DESKTOP && hasPairedDevices ? (
+							<p className="mt-2 text-muted-foreground text-xs">
+								{didFallBack
+									? t('footer.relay.pairedDevicesFallbackNote')
+									: t('footer.relay.pairedDevicesNote')}
+							</p>
+						) : null}
 					</div>
 				</div>
 			</PopoverContent>

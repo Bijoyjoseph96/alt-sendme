@@ -46,6 +46,8 @@ pub enum RememberVote {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum InviteResponse {
+    /// Control plane received the invite and surfaced it to the UI.
+    Delivered,
     Accepted,
     Declined,
 }

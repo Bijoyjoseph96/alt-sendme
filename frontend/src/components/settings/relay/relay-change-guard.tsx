@@ -5,7 +5,7 @@ import { getRelayChangeWarningType } from '../../../lib/relay-change-warning'
 import { buildRelayConfigArg } from '../../../lib/relay-config'
 import { reconfigureNodeRelay } from '../../../lib/pairing-api'
 import { useAppSettingStore } from '../../../store/app-setting'
-import { useNodeCapability } from '../../../hooks/useNodeCapability'
+import { selectIsNodeReady, markNodeRelaySynced, usePairingStore } from '@/store/pairing-store'
 import { IS_DESKTOP } from '@/lib/platform'
 import {
 	AlertDialog,
@@ -26,7 +26,7 @@ export function RelayChangeGuard() {
 	const relayUrls = useAppSettingStore((s) => s.relayUrls)
 	const relayAuthToken = useAppSettingStore((s) => s.relayAuthToken)
 	const relayFallback = useAppSettingStore((s) => s.relayFallback)
-	const { isNodeReady } = useNodeCapability()
+	const isNodeReady = usePairingStore(selectIsNodeReady)
 
 	// The mode the user arrived in settings with. Comparing against this means we
 	// only warn on an actual change and never nag users who already had a
@@ -74,12 +74,21 @@ export function RelayChangeGuard() {
 						relayAuthToken,
 						relayFallback,
 					})
-				).catch((error) => {
-					console.warn('Failed to reconfigure device node relay:', error)
-				})
+				)
+					.then(() => markNodeRelaySynced())
+					.catch((error) => {
+						console.warn('Failed to reconfigure device node relay:', error)
+					})
 			}
 		}
 	}
+
+	const pairedHintKey =
+		warningType === 'disabled'
+			? 'common:settings.devices.relayChangePairedHintDisabled'
+			: warningType === 'custom'
+				? 'common:settings.devices.relayChangePairedHintCustom'
+				: 'common:settings.devices.relayChangePairedHint'
 
 	return (
 		<AlertDialog
@@ -103,7 +112,10 @@ export function RelayChangeGuard() {
 							<>
 								<br />
 								<br />
-								{t('common:settings.devices.relayChangePairedHint')}
+								{t(pairedHintKey)}
+								<br />
+								<br />
+								{t('common:settings.devices.relayChangeQrInvalidated')}
 							</>
 						) : null}
 					</AlertDialogDescription>

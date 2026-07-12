@@ -10,13 +10,14 @@ import type { TransferMetadata, TransferProgress } from '../types/transfer'
 import { SpeedAverager, calculateETA } from '../utils/etaUtils'
 import { getRelayConfigArg } from '../lib/relay'
 import { useSenderStore } from '../store/sender-store'
-import { IS_DESKTOP } from '@/lib/platform'
 import {
 	invitePairedDevice,
-	listPairedDevices,
 	type PairedDevice,
 } from '@/lib/pairing-api'
-import { useNodeCapability } from '@/hooks/useNodeCapability'
+import {
+	selectIsNodeReady,
+	usePairingStore,
+} from '@/store/pairing-store'
 import { toastManager } from '../components/ui/toast'
 
 export type PairedInviteStatus = 'sending' | 'sent' | 'failed'
@@ -99,11 +100,11 @@ export function useSender(): UseSenderReturn {
 		setActiveConnectionCount,
 	} = useSenderStore()
 
-	const [pairedDevices, setPairedDevices] = useState<PairedDevice[]>([])
 	const [pairedInviteStatus, setPairedInviteStatus] = useState<
 		Record<string, PairedInviteStatus>
 	>({})
-	const { isNodeReady } = useNodeCapability()
+	const pairedDevices = usePairingStore((s) => s.pairedDevices)
+	const isNodeReady = usePairingStore(selectIsNodeReady)
 
 	const setInviteStatus = useCallback(
 		(endpointId: string, status: PairedInviteStatus | null) => {
@@ -119,22 +120,6 @@ export function useSender(): UseSenderReturn {
 		},
 		[]
 	)
-
-	const refreshPairedDevices = useCallback(async () => {
-		if (!IS_DESKTOP) {
-			setPairedDevices([])
-			return
-		}
-		try {
-			setPairedDevices(await listPairedDevices())
-		} catch (error) {
-			console.error('Failed to load paired devices:', error)
-		}
-	}, [])
-
-	useEffect(() => {
-		void refreshPairedDevices()
-	}, [refreshPairedDevices])
 
 	// Refs for event listeners
 	const latestProgressRef = useRef<TransferProgress | null>(null)
@@ -167,7 +152,6 @@ export function useSender(): UseSenderReturn {
 		let unlistenComplete: UnlistenFn | undefined
 		let unlistenFailed: UnlistenFn | undefined
 		let unlistenActiveCount: UnlistenFn | undefined
-		let unlistenDevicePaired: UnlistenFn | undefined
 
 		const safeUnlisten = (unlisten?: UnlistenFn) => {
 			if (unlisten) {
@@ -182,7 +166,6 @@ export function useSender(): UseSenderReturn {
 					try {
 						const count = parseInt(event.payload as string, 10)
 						if (!Number.isNaN(count)) {
-							// console.log('[useSender] active-connection-count event received:', count)
 							setActiveConnectionCount(count)
 						}
 					} catch (error) {
@@ -197,15 +180,6 @@ export function useSender(): UseSenderReturn {
 				nextUnlistenActiveCount()
 			} else {
 				unlistenActiveCount = nextUnlistenActiveCount
-			}
-
-			const nextUnlistenDevicePaired = await listen('device-paired', () => {
-				void refreshPairedDevices()
-			})
-			if (disposed) {
-				nextUnlistenDevicePaired()
-			} else {
-				unlistenDevicePaired = nextUnlistenDevicePaired
 			}
 
 			const nextUnlistenStart = await listen('transfer-started', () => {
@@ -592,7 +566,6 @@ export function useSender(): UseSenderReturn {
 			safeUnlisten(unlistenComplete)
 			safeUnlisten(unlistenFailed)
 			safeUnlisten(unlistenActiveCount)
-			safeUnlisten(unlistenDevicePaired)
 			unlistenStart = undefined
 			unlistenProgress = undefined
 			unlistenComplete = undefined
@@ -605,7 +578,6 @@ export function useSender(): UseSenderReturn {
 		setTransferProgress,
 		resetForBroadcast,
 		setActiveConnectionCount,
-		refreshPairedDevices,
 	])
 
 	const handleFilesSelect = async (
@@ -870,12 +842,8 @@ export function useSender(): UseSenderReturn {
 	}
 
 	const onInvitePairedDevice = async (endpointId: string) => {
-		if (!ticket) {
-			console.warn('[paired-invite] sender: skipped — no active share ticket')
-			return
-		}
+		if (!ticket) return
 		if (!isNodeReady) {
-			console.warn('[paired-invite] sender: skipped — node not ready')
 			toastManager.add({
 				title: t('common:settings.devices.nodeUnavailableTitle'),
 				description: t('common:settings.devices.nodeUnavailableHint'),
@@ -910,21 +878,35 @@ export function useSender(): UseSenderReturn {
 				setTimeout(() => setInviteStatus(endpointId, null), 5000)
 			} else {
 				setInviteStatus(endpointId, 'failed')
+				const failedToastId = crypto.randomUUID()
 				toastManager.add({
-					title: t('common:sender.pairedDevices.inviteFailed'),
-					description: t('common:sender.pairedDevices.deviceUnreachable'),
+					id: failedToastId,
+					title: t('common:sender.pairedDevices.inviteFailedTo', {
+						name: deviceName,
+					}),
+					description: t(
+						'common:sender.pairedDevices.inviteFailedRecovery'
+					),
 					type: 'error',
+					actionProps: {
+						children: t('common:sender.copyToClipboard'),
+						onClick: () => {
+							if (ticket) {
+								void navigator.clipboard.writeText(ticket)
+							}
+							toastManager.close(failedToastId)
+						},
+					},
 				})
 				setTimeout(() => setInviteStatus(endpointId, null), 4000)
 			}
 		} catch (error) {
-			console.error('[paired-invite] sender: invite failed', {
-				endpointId,
-				error,
-			})
+			console.error('Failed to invite paired device:', error)
 			setInviteStatus(endpointId, 'failed')
 			toastManager.add({
-				title: t('common:sender.pairedDevices.inviteFailed'),
+				title: t('common:sender.pairedDevices.inviteFailedTo', {
+					name: deviceName,
+				}),
 				description: String(error),
 				type: 'error',
 			})
